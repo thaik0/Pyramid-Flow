@@ -12,7 +12,7 @@
 set -euo pipefail
 
 module load pytorch/2.6.0
-cd /pscratch/sd/t/tak86/Pyramid-Flow-fluid
+cd "${SLURM_SUBMIT_DIR}"
 
 PY=/pscratch/sd/t/tak86/venvs/pyramid-flow-fluid/bin/python
 
