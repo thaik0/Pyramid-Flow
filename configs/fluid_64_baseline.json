@@ -1,0 +1,13 @@
+{
+  "crop_size": 64,
+  "crop_seed": 42,
+  "patch_size": 4,
+  "channels": ["u", "v", "w"],
+  "stages": [1, 2, 4],
+  "stage_range": [0.0, 0.3333333333333333, 0.6666666666666666, 1.0],
+  "sample_ratios": [1, 2, 1],
+  "normalization": null,
+  "split": null,
+  "seed": 42,
+  "note": "Provisional smoke-test baseline. Normalization and trajectory-aware split require real-data inspection."
+}

@@ -215,16 +215,18 @@ class PatchEmbed3D(nn.Module):
         max_num_frames=64,
         add_temp_pos_embed=False,
         interp_condition_pos=False,
+        volume_mode=False,
     ):
         super().__init__()
 
         num_patches = (height // patch_size) * (width // patch_size)
         self.layer_norm = layer_norm
         self.pos_embed_max_size = pos_embed_max_size
+        self.volume_mode = volume_mode
 
-        self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
-        )
+        conv = nn.Conv3d if volume_mode else nn.Conv2d
+        kernel_size = (patch_size,) * (3 if volume_mode else 2)
+        self.proj = conv(in_channels, embed_dim, kernel_size=kernel_size, stride=patch_size, bias=bias)
         if layer_norm:
             self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6)
         else:
@@ -308,6 +310,12 @@ class PatchEmbed3D(nn.Module):
         return spatial_pos_embed
 
     def forward_func(self, latent, time_index=0, ori_height=None, ori_width=None):
+        if self.volume_mode:
+            latent = self.proj(latent)
+            latent = rearrange(latent, 'b c d h w -> b d (h w) c')
+            if self.layer_norm:
+                latent = self.norm(latent)
+            return latent
         if self.pos_embed_max_size is not None:
             height, width = latent.shape[-2:]
         else:

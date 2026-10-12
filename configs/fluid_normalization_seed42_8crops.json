@@ -1,0 +1,11 @@
+{
+  "channels": ["u", "v", "w"],
+  "mean": [0.5285904510027194, 0.11970784703428358, 0.19564316726407677],
+  "std": [1.1198661592126171, 1.3063821244703708, 1.1797703573273377],
+  "min": [-3.5911619663238525, -3.6791951656341553, -3.3813047409057617],
+  "max": [4.401163578033447, 4.644538879394531, 4.4312214851379395],
+  "sample_count": 8,
+  "crop_size": 64,
+  "seed": 42,
+  "status": "provisional smoke-test statistics; recompute on the approved training interval before full training"
+}

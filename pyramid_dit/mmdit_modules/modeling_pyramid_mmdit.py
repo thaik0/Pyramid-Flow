@@ -84,10 +84,12 @@ class PyramidDiffusionMMDiT(ModelMixin, ConfigMixin):
         add_temp_pos_embed: bool = False,
         interp_condition_pos: bool = False,
         gradient_checkpointing_ratio: float = 0.6,
+        volume_mode: bool = False,
     ):
         super().__init__()
 
         self.out_channels = in_channels
+        self.volume_mode = volume_mode
         self.inner_dim = num_attention_heads * attention_head_dim
         assert temp_pos_embed_type in ['rope', 'sincos']
 
@@ -104,6 +106,7 @@ class PyramidDiffusionMMDiT(ModelMixin, ConfigMixin):
             temp_pos_embed_type=temp_pos_embed_type,
             add_temp_pos_embed=add_temp_pos_embed,
             interp_condition_pos=interp_condition_pos,
+            volume_mode=volume_mode,
         )
 
         # The RoPE EMbedding
@@ -137,7 +140,8 @@ class PyramidDiffusionMMDiT(ModelMixin, ConfigMixin):
         )
 
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        patch_elements = patch_size ** (3 if volume_mode else 2)
+        self.proj_out = nn.Linear(self.inner_dim, patch_elements * self.out_channels, bias=True)
         self.gradient_checkpointing = use_gradient_checkpointing
         self.gradient_checkpointing_ratio = gradient_checkpointing_ratio
 
@@ -284,6 +288,7 @@ class PyramidDiffusionMMDiT(ModelMixin, ConfigMixin):
             _, _, temp, height, width = sample_.shape
             height = height // self.patch_size
             width = width // self.patch_size
+            temp = temp // self.patch_size if self.volume_mode else temp
             temp_list.append(temp)
             height_list.append(height)
             width_list.append(width)
@@ -291,8 +296,8 @@ class PyramidDiffusionMMDiT(ModelMixin, ConfigMixin):
 
         # prepare the RoPE embedding if needed
         if self.pos_embed_type == 'rope':
-            # TODO: support the 3D Rope for video
-            raise NotImplementedError("Not compatible with video generation now")
+            if not self.volume_mode:
+                raise NotImplementedError("3D RoPE is enabled only for volume_mode")
             text_ids = torch.zeros(pad_batch_size, encoder_hidden_length, 3).to(device=device)
             image_ids_list = self._prepare_pyramid_latent_image_ids(pad_batch_size, temp_list, height_list, width_list, device)
             input_ids_list = [torch.cat([text_ids, image_ids], dim=1) for image_ids in image_ids_list]
@@ -408,10 +413,16 @@ class PyramidDiffusionMMDiT(ModelMixin, ConfigMixin):
             hidden_states = hidden_states[:, -trainable_token_num:]
 
             # unpatchify
-            hidden_states = hidden_states.reshape(
-                shape=(batch_size, temp, height, width, self.patch_size, self.patch_size, self.out_channels)
-            )
-            hidden_states = rearrange(hidden_states, "b t h w p1 p2 c -> b t (h p1) (w p2) c")
+            if self.volume_mode:
+                hidden_states = hidden_states.reshape(
+                    shape=(batch_size, temp, height, width, self.patch_size, self.patch_size, self.patch_size, self.out_channels)
+                )
+                hidden_states = rearrange(hidden_states, "b d h w pd ph pw c -> b (d pd) (h ph) (w pw) c")
+            else:
+                hidden_states = hidden_states.reshape(
+                    shape=(batch_size, temp, height, width, self.patch_size, self.patch_size, self.out_channels)
+                )
+                hidden_states = rearrange(hidden_states, "b t h w p1 p2 c -> b t (h p1) (w p2) c")
             hidden_states = rearrange(hidden_states, "b t h w c -> b c t h w")
             output_hidden_list.append(hidden_states)
 

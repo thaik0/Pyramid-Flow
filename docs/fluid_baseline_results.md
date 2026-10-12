@@ -1,0 +1,90 @@
+# Preliminary fluid Pyramid Flow baseline results
+
+These results are engineering validation for the provisional 3-D fluid port.
+They demonstrate that the implementation executes, optimizes, and samples;
+they are not yet evidence of scientific fidelity or readiness for a
+`384^3` comparison.
+
+## Per-stage optimization smoke test
+
+Each pyramid stage completed a forward pass, backward pass, and optimizer
+step.
+
+| Resolution | Tokens | Loss | Peak GPU memory |
+|---|---:|---:|---:|
+| `16^3` | 64 | 0.231 | approximately 0.08 GB |
+| `32^3` | 512 | 0.576 | approximately 0.09 GB |
+| `64^3` | 4,096 | 0.596 | approximately 0.66 GB |
+
+The loss values from this smoke test are not intended as quality metrics.
+
+## Eight-crop overfit test
+
+The model was trained for 300 steps on eight fixed `64^3` crops. Loss fell at
+all three stages:
+
+- `16^3`: approximately 41 percent
+- `32^3`: approximately 52 percent
+- `64^3`: approximately 49 percent
+
+Four new `64^3` velocity fields were sampled from the final checkpoint.
+
+## Small training run
+
+The larger smoke baseline used 128 crops and 600 optimizer steps with:
+
+```yaml
+seed: 42
+batch_size: 1
+learning_rate: 1.0e-4
+model_layers: 1
+attention_heads: 2
+```
+
+Loss fell at all three stages:
+
+- `16^3`: approximately 47 percent
+- `32^3`: approximately 58 percent
+- `64^3`: approximately 52 percent
+
+Eight samples were generated from the final checkpoint. The run was reported
+as reproducible.
+
+## Preliminary generated-field diagnostics
+
+For the eight generated samples:
+
+| Diagnostic | Value |
+|---|---:|
+| `u` standard deviation | 0.780 |
+| `v` standard deviation | 0.851 |
+| `w` standard deviation | 0.807 |
+| Mean kinetic energy | 1.019 |
+| Approximate divergence RMS | 0.815 |
+
+The divergence implementation uses a periodic-crop approximation. These
+diagnostics have not yet been compared with held-out real fields or an
+approved laboratory metric implementation.
+
+## Observed bottleneck
+
+The 600-step job took approximately 44 minutes of wall time while recorded GPU
+operations took approximately 9 seconds. This strongly suggests an input
+pipeline bottleneck, but the cause has not yet been isolated. Candidate
+follow-up measurements include NetCDF open time, crop extraction time, host to
+device transfer time, data-loader wait time, and GPU utilization.
+
+Potential optimizations to test only after profiling include keeping files
+open, grouping crops from the same file, caching the bounded training subset,
+and using multiple data-loader workers.
+
+## Current interpretation
+
+The 600-step checkpoint is suitable for implementation-level inference smoke
+tests. It should not yet be treated as a scientifically validated generator.
+The current dense-attention model also cannot be run naively at `384^3`; see
+[`scaling_384.md`](scaling_384.md).
+
+Before a formal experiment, record the checkpoint's durable location and
+SHA-256 checksum, the exact job identifier, software environment, complete
+metrics, and generated-sample paths.
