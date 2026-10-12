@@ -88,3 +88,24 @@ The current dense-attention model also cannot be run naively at `384^3`; see
 Before a formal experiment, record the checkpoint's durable location and
 SHA-256 checksum, the exact job identifier, software environment, complete
 metrics, and generated-sample paths.
+
+## SpotDiffusion-style tiling correctness gate
+
+The tensor-only 3-D shifted-window implementation was tested on NERSC before
+any model inference changes. Slurm job `59716765` ran with the PyTorch 2.6.0
+module and reported `5 passed in 8.35s`.
+
+The passing tests verify:
+
+- exact split and stitch of a `[1,3,384,384,384]` tensor into 216
+  non-overlapping `[3,64,64,64]` patches;
+- exact reconstruction after cyclic shift, split, stitch, and inverse shift;
+- complete voxel coverage with no gaps or overlaps;
+- reproducible seeded 3-D shift schedules, with different seeds producing
+  different schedules; and
+- preservation of the `u`, `v`, and `w` channel axis during shifting and
+  patching.
+
+This validates patch geometry and reproducibility only. It does not yet test a
+checkpoint forward pass, scheduler integration, memory use during model
+inference, seam reduction, or physical-field quality.
