@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --account=m5401_g
+#SBATCH --constraint=gpu
+#SBATCH --qos=shared
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gpus=1
+#SBATCH --time=00:10:00
+#SBATCH --job-name=spotdiffusion-tests
+#SBATCH --output=spotdiffusion-tests-%j.out
+
+set -euo pipefail
+
+module load pytorch/2.6.0
+cd /pscratch/sd/t/tak86/Pyramid-Flow-fluid
+
+PY=/pscratch/sd/t/tak86/venvs/pyramid-flow-fluid/bin/python
+
+srun "$PY" -m pytest -q tests/test_spotdiffusion_3d.py
