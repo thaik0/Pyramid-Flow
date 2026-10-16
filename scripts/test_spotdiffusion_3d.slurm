@@ -14,6 +14,6 @@ set -euo pipefail
 module load pytorch/2.6.0
 cd "${SLURM_SUBMIT_DIR}"
 
-PY=/pscratch/sd/t/tak86/venvs/pyramid-flow-fluid/bin/python
+PYTHON_BIN="${PYTHON_BIN:-python}"
 
-srun "$PY" -m pytest -q tests/test_spotdiffusion_3d.py
+srun "$PYTHON_BIN" -m pytest -q tests/test_spotdiffusion_3d.py
