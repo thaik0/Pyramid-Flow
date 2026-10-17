@@ -23,7 +23,8 @@ mkdir -p "$OUTPUT_DIR"
 
 srun "$PYTHON_BIN" -m pytest -q \
   tests/test_spotdiffusion_3d.py \
-  tests/test_spotdiffusion_sampler_3d.py
+  tests/test_spotdiffusion_sampler_3d.py \
+  tests/test_spotdiffusion_ablation.py
 
 for MODE in fixed shifted; do
   srun "$PYTHON_BIN" tools/sample_spotdiffusion_3d.py \
