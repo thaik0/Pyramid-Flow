@@ -120,7 +120,21 @@ unshifts one global velocity field, and applies one scheduler update to the
 global state.
 
 The accompanying Slurm smoke job runs the tensor tests, sampler unit tests,
-and one checkpoint-backed global step per stage. Gate 2 remains pending until
-that Perlmutter job records finite outputs, the expected stage shapes, runtime,
-and peak GPU memory. No seam or scientific-quality claim follows from the
-smoke test alone.
+and one checkpoint-backed global step per stage.
+
+Gate 2 passed on Perlmutter in Slurm job `59911248`:
+
+- all seven tensor and sampler tests passed in 26.93 seconds;
+- the 600-step checkpoint loaded with SHA-256
+  `881aecf70a1e8220f2eaf9891d8bb627f2bd31d13eeface1b077558909bbe019`;
+- the global stage shapes were `96^3`, `192^3`, and `384^3` with local window
+  sizes `16^3`, `32^3`, and `64^3`;
+- all three post-update global states contained only finite values;
+- checkpoint-backed sampling took 3.51 seconds; and
+- peak allocated GPU memory was 6,220,302,848 bytes (approximately 6.22 GB).
+
+The job used one shifted-window flow step per stage and did not save the final
+volume. This establishes checkpoint, local-prediction, stitching, shift
+inversion, and global-scheduler integration. It does not establish seam
+reduction or scientific quality; those require a matched fixed-versus-shifted
+multi-step evaluation.
