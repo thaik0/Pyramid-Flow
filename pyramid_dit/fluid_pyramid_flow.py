@@ -68,6 +68,39 @@ class FluidPyramidFlow(nn.Module):
         pooled = torch.zeros(batch_size, self.pooled_dim, device=device, dtype=dtype)
         return context, mask, pooled
 
+    def predict_velocity(
+        self,
+        volume: torch.Tensor,
+        timestep: torch.Tensor | float,
+    ) -> torch.Tensor:
+        """Predict rectified-flow velocity for one batch at one timestep."""
+        if volume.ndim != 5 or volume.shape[1] != 3:
+            raise ValueError(
+                "volume must have shape [B,3,D,H,W], got "
+                f"{tuple(volume.shape)}"
+            )
+        batch_size = volume.shape[0]
+        timestep_tensor = torch.as_tensor(
+            timestep, device=volume.device, dtype=volume.dtype
+        )
+        if timestep_tensor.ndim == 0:
+            timestep_tensor = timestep_tensor.expand(batch_size)
+        elif timestep_tensor.shape != (batch_size,):
+            raise ValueError(
+                "timestep must be scalar or have shape [B], got "
+                f"{tuple(timestep_tensor.shape)}"
+            )
+        context, mask, pooled = self._conditions(
+            batch_size, volume.device, volume.dtype
+        )
+        return self.dit(
+            sample=[volume],
+            timestep_ratio=timestep_tensor,
+            encoder_hidden_states=context,
+            encoder_attention_mask=mask,
+            pooled_projections=pooled,
+        )[0]
+
     def training_loss(
         self,
         volume: torch.Tensor,
@@ -98,12 +131,7 @@ class FluidPyramidFlow(nn.Module):
         ratio_view = ratio.view(-1, 1, 1, 1, 1)
         noisy = ratio_view * start + (1 - ratio_view) * end
         target = start - end
-        context, mask, pooled = self._conditions(volume.shape[0], volume.device, volume.dtype)
-        prediction = self.dit(
-            sample=[noisy], timestep_ratio=timestep,
-            encoder_hidden_states=context, encoder_attention_mask=mask,
-            pooled_projections=pooled,
-        )[0]
+        prediction = self.predict_velocity(noisy, timestep)
         return F.mse_loss(prediction.float(), target.float()), {"stage": stage}
 
     @torch.no_grad()
@@ -112,7 +140,6 @@ class FluidPyramidFlow(nn.Module):
             raise ValueError("steps must contain one value per pyramid stage")
         low_size = size // self.stages[-1]
         volume = torch.randn((batch_size, 3, low_size, low_size, low_size), generator=generator, device=device, dtype=dtype)
-        context, mask, pooled = self._conditions(batch_size, device, dtype)
         for stage, stage_steps in enumerate(steps):
             self.scheduler.set_timesteps(stage_steps, stage, device=device)
             if stage:
@@ -121,10 +148,6 @@ class FluidPyramidFlow(nn.Module):
                 volume = (1 - sigma) * volume + sigma * torch.randn(volume.shape, generator=generator, device=device, dtype=dtype)
             for timestep in self.scheduler.timesteps:
                 t = timestep.expand(batch_size).to(dtype)
-                velocity = self.dit(
-                    sample=[volume], timestep_ratio=t,
-                    encoder_hidden_states=context, encoder_attention_mask=mask,
-                    pooled_projections=pooled,
-                )[0]
+                velocity = self.predict_velocity(volume, t)
                 volume = self.scheduler.step(velocity, t, volume, generator=generator).prev_sample
         return volume

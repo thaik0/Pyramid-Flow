@@ -109,3 +109,18 @@ The passing tests verify:
 This validates patch geometry and reproducibility only. It does not yet test a
 checkpoint forward pass, scheduler integration, memory use during model
 inference, seam reduction, or physical-field quality.
+
+## Gate 2 implementation status
+
+The checkpoint-integrated global sampler is implemented on the
+`spotdiffusion-3d` branch. It keeps one global state at each pyramid
+resolution (`96^3`, `192^3`, then `384^3`), predicts stage-consistent local
+windows (`16^3`, `32^3`, then `64^3`) in bounded batches, stitches and
+unshifts one global velocity field, and applies one scheduler update to the
+global state.
+
+The accompanying Slurm smoke job runs the tensor tests, sampler unit tests,
+and one checkpoint-backed global step per stage. Gate 2 remains pending until
+that Perlmutter job records finite outputs, the expected stage shapes, runtime,
+and peak GPU memory. No seam or scientific-quality claim follows from the
+smoke test alone.
