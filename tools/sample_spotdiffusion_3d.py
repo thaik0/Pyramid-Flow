@@ -7,7 +7,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import torch
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -96,11 +95,11 @@ def main():
     physical = normalized * std + mean
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if args.save_volume:
-        np.savez_compressed(
-            args.output_dir / "generated_fields.npz",
-            normalized=normalized.cpu().numpy(),
-            physical=physical.cpu().numpy(),
-        )
+        # Store only the physical field. Keeping normalized and physical copies
+        # would double an already large 384^3 artifact.
+        import numpy as np
+
+        np.save(args.output_dir / "physical_fields.npy", physical.cpu().numpy())
     metadata = {
         "checkpoint": str(args.checkpoint.resolve()),
         "checkpoint_sha256": sha256(args.checkpoint),
@@ -121,6 +120,7 @@ def main():
         "physical_std": [float(value) for value in physical.std((0, 2, 3, 4))],
         "steps": records,
         "volume_saved": args.save_volume,
+        "volume_path": "physical_fields.npy" if args.save_volume else None,
     }
     (args.output_dir / "generation.json").write_text(
         json.dumps(metadata, indent=2) + "\n"
