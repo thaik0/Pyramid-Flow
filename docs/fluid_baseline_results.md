@@ -138,3 +138,31 @@ volume. This establishes checkpoint, local-prediction, stitching, shift
 inversion, and global-scheduler integration. It does not establish seam
 reduction or scientific quality; those require a matched fixed-versus-shifted
 multi-step evaluation.
+
+## Fixed-versus-shifted ablation
+
+A matched single-seed ablation used the same 600-step checkpoint, initial and
+stage-transition noise, four-step-per-stage sampler, global resolution, and
+patch batch size. The only intended difference was fixed versus randomly
+shifted patch boundaries. Job `59921234` generated both `384^3` fields and job
+`59929264` performed the corrected phase-invariant seam evaluation.
+
+The shifted treatment reduced the fixed-grid boundary-to-interior jump ratio
+from 1.430 to 1.079 (24.6 percent) and reduced the phase-invariant seam score
+from 1.542 to 1.091 (29.2 percent). The latter scans all 64 possible boundary
+phases, so the result is evidence that seams were reduced rather than merely
+relocated. Runtime was similar (10.94 seconds fixed versus 10.29 seconds
+shifted), and both arms used 6,813,796,864 bytes of peak allocated GPU memory.
+
+However, the shifted field's mean kinetic energy was 36.5 percent lower, its
+periodic divergence RMS was 14.9 percent lower, and its energy spectrum had a
+relative L1 difference of 0.365 from the fixed control. Component velocity
+standard deviations also fell substantially. The divergence change may be
+favorable, but it cannot be separated from the strong loss of field energy in
+this experiment.
+
+The answer to the ablation question is therefore mixed: shifting reduced
+seams at no measured runtime or memory penalty, but the claim that it did so
+without hurting the generated field is not supported by this single sample.
+Matched visual inspection, comparison against real-field reference metrics,
+and multiple paired seeds are still required before a scientific conclusion.
