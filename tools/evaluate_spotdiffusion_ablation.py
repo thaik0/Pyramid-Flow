@@ -44,7 +44,11 @@ def divergence_rms(field: torch.Tensor, spacing: tuple[float, float, float]) -> 
 
 
 def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
-    """Compare adjacent-voxel jumps on patch planes with all other planes."""
+    """Measure fixed-grid jumps and scan every possible grid phase.
+
+    The phase scan is required for shifted inference: measuring only multiples
+    of ``window_size`` can mistake a relocated seam for a removed seam.
+    """
     axes = {}
     aggregate_boundary_sum = 0.0
     aggregate_boundary_sq_sum = 0.0
@@ -52,9 +56,23 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
     aggregate_interior_sum = 0.0
     aggregate_interior_sq_sum = 0.0
     aggregate_interior_count = 0
+    phase_peak_ratios = []
     for label, dimension in zip(("depth", "height", "width"), (-3, -2, -1)):
         jumps = torch.diff(field, dim=dimension).abs()
         length = field.shape[dimension]
+        phase_means = []
+        for phase in range(window_size):
+            phase_indices = torch.arange(
+                phase, length - 1, window_size, device=field.device
+            )
+            phase_means.append(
+                float(torch.index_select(jumps, dimension, phase_indices).mean())
+            )
+        phase_array = np.asarray(phase_means)
+        peak_phase = int(phase_array.argmax())
+        phase_median = float(np.median(phase_array))
+        phase_peak_ratio = safe_ratio(float(phase_array[peak_phase]), phase_median)
+        phase_peak_ratios.append(phase_peak_ratio)
         indices = torch.arange(
             window_size - 1, length - 1, window_size, device=field.device
         )
@@ -75,6 +93,13 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
             "boundary_to_interior_ratio": safe_ratio(boundary_mean, interior_mean),
             "boundary_rms_jump": (boundary_sq_sum / boundary_count) ** 0.5,
             "interior_rms_jump": (interior_sq_sum / interior_count) ** 0.5,
+            "phase_scan": {
+                "peak_phase": peak_phase,
+                "peak_mean_absolute_jump": float(phase_array[peak_phase]),
+                "median_phase_mean_absolute_jump": phase_median,
+                "peak_to_median_ratio": phase_peak_ratio,
+                "mean_absolute_jump_by_phase": phase_means,
+            },
         }
         aggregate_boundary_sum += boundary_sum
         aggregate_boundary_sq_sum += boundary_sq_sum
@@ -97,6 +122,7 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
             "interior_rms_jump": (
                 aggregate_interior_sq_sum / aggregate_interior_count
             ) ** 0.5,
+            "phase_invariant_seam_score": float(np.mean(phase_peak_ratios)),
         },
     }
 
@@ -253,6 +279,10 @@ def main():
         fixed_seam["boundary_to_interior_ratio"]
         - shifted_seam["boundary_to_interior_ratio"]
     ) / fixed_seam["boundary_to_interior_ratio"]
+    phase_invariant_change = 100 * (
+        shifted_seam["phase_invariant_seam_score"]
+        - fixed_seam["phase_invariant_seam_score"]
+    ) / fixed_seam["phase_invariant_seam_score"]
     spectrum_length = min(len(spectra["fixed"]), len(spectra["shifted"]))
     fixed_spectrum = spectra["fixed"][:spectrum_length]
     shifted_spectrum = spectra["shifted"][:spectrum_length]
@@ -267,7 +297,8 @@ def main():
         "controls_match": controls_match,
         "metrics": metrics,
         "comparison": {
-            "seam_ratio_reduction_percent": seam_reduction,
+            "fixed_grid_seam_ratio_reduction_percent": seam_reduction,
+            "phase_invariant_seam_score_change_percent": phase_invariant_change,
             "divergence_change_percent": 100
             * (
                 metrics["shifted"]["divergence_rms_periodic"]
