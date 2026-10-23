@@ -128,11 +128,14 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
 
 
 def isotropic_energy_spectrum(field: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
-    """Return the full-mode-weighted spectrum from a real-valued 3-D FFT."""
+    """Return the full-mode-weighted spectrum of velocity fluctuations."""
     depth, height, width = field.shape[-3:]
     if not (depth == height == width):
         raise ValueError("energy spectrum currently requires a cubic field")
-    transformed = torch.fft.rfftn(field, dim=(-3, -2, -1), norm="forward")
+    fluctuations = field - field.mean(dim=(-3, -2, -1), keepdim=True)
+    transformed = torch.fft.rfftn(
+        fluctuations, dim=(-3, -2, -1), norm="forward"
+    )
     energy = 0.5 * transformed.abs().square().sum(dim=1)[0]
     kz = torch.fft.fftfreq(depth, device=field.device) * depth
     ky = torch.fft.fftfreq(height, device=field.device) * height

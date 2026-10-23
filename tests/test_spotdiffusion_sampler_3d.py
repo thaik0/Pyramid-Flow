@@ -65,3 +65,27 @@ def test_sampler_uses_stage_consistent_global_and_window_sizes():
     assert [step.window_size for step in observed] == [2, 4]
     assert [step.shift for step in observed] == [(0, 0, 0), (0, 0, 0)]
     assert torch.isfinite(result).all()
+
+
+def test_early_shift_policy_keeps_each_stage_final_step_fixed():
+    model = FakeModel()
+    observed = []
+    sample_global_spotdiffusion_3d(
+        model=model,
+        batch_size=1,
+        global_size=8,
+        steps=(3, 3),
+        device="cpu",
+        dtype=torch.float32,
+        generator=torch.Generator().manual_seed(3),
+        patch_batch_size=5,
+        shift_policy="early",
+        shift_seed=19,
+        step_callback=lambda step, volume: observed.append(step),
+    )
+    stage_shifts = {
+        stage: [step.shift for step in observed if step.stage == stage]
+        for stage in range(2)
+    }
+    assert all(shifts[-1] == (0, 0, 0) for shifts in stage_shifts.values())
+    assert all(any(shift != (0, 0, 0) for shift in shifts[:-1]) for shifts in stage_shifts.values())

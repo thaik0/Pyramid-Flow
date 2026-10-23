@@ -32,7 +32,11 @@ def parse_args():
     parser.add_argument("--global-size", type=int, default=384)
     parser.add_argument("--steps-per-stage", type=int, default=1)
     parser.add_argument("--patch-batch-size", type=int, default=1)
-    parser.add_argument("--mode", choices=("fixed", "shifted"), default="shifted")
+    parser.add_argument(
+        "--mode",
+        choices=("fixed", "shifted", "shifted-early"),
+        default="shifted",
+    )
     parser.add_argument("--seed", type=int, default=4242)
     parser.add_argument("--shift-seed", type=int, default=1729)
     parser.add_argument("--device", default="cuda")
@@ -82,7 +86,11 @@ def main():
         dtype=torch.float32,
         generator=generator,
         patch_batch_size=args.patch_batch_size,
-        shifted_windows=args.mode == "shifted",
+        shift_policy={
+            "fixed": "fixed",
+            "shifted": "all",
+            "shifted-early": "early",
+        }[args.mode],
         shift_seed=args.shift_seed,
         step_callback=record_step,
     )

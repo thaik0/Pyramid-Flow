@@ -72,6 +72,7 @@ def sample_global_spotdiffusion_3d(
     generator: torch.Generator | None = None,
     patch_batch_size: int = 1,
     shifted_windows: bool = True,
+    shift_policy: str | None = None,
     shift_seed: int = 0,
     step_callback: Callable[[GlobalStep3D, torch.Tensor], None] | None = None,
 ) -> torch.Tensor:
@@ -86,6 +87,10 @@ def sample_global_spotdiffusion_3d(
         raise ValueError("global_size must be positive and divisible by the final stage")
     if len(steps) != len(model.stages) or any(count <= 0 for count in steps):
         raise ValueError("steps must contain one positive value per pyramid stage")
+    if shift_policy is None:
+        shift_policy = "all" if shifted_windows else "fixed"
+    if shift_policy not in {"fixed", "all", "early"}:
+        raise ValueError("shift_policy must be 'fixed', 'all', or 'early'")
 
     final_local_size = model.dit.config.sample_size
     if final_local_size % model.stages[-1]:
@@ -122,11 +127,14 @@ def sample_global_spotdiffusion_3d(
             volume = (1 - sigma) * volume + sigma * noise
 
         model.scheduler.set_timesteps(stage_steps, stage, device=device)
-        shifts = (
-            sample_shift_schedule(stage_steps, window_size, shift_seed + stage)
-            if shifted_windows
-            else [(0, 0, 0)] * stage_steps
-        )
+        if shift_policy == "fixed":
+            shifts = [(0, 0, 0)] * stage_steps
+        else:
+            shifts = sample_shift_schedule(
+                stage_steps, window_size, shift_seed + stage
+            )
+            if shift_policy == "early":
+                shifts[-1] = (0, 0, 0)
         for step_index, (timestep, shift) in enumerate(
             zip(model.scheduler.timesteps, shifts)
         ):
