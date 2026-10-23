@@ -50,23 +50,27 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
     of ``window_size`` can mistake a relocated seam for a removed seam.
     """
     axes = {}
-    aggregate_boundary_sum = 0.0
-    aggregate_boundary_sq_sum = 0.0
-    aggregate_boundary_count = 0
-    aggregate_interior_sum = 0.0
-    aggregate_interior_sq_sum = 0.0
-    aggregate_interior_count = 0
+    aggregate_boundary_means = []
+    aggregate_boundary_sq_means = []
+    aggregate_interior_means = []
+    aggregate_interior_sq_means = []
     phase_peak_ratios = []
     for label, dimension in zip(("depth", "height", "width"), (-3, -2, -1)):
         jumps = torch.diff(field, dim=dimension).abs()
         length = field.shape[dimension]
+        positive_dimension = field.ndim + dimension
+        reduce_dimensions = tuple(
+            axis for axis in range(jumps.ndim) if axis != positive_dimension
+        )
+        plane_means = jumps.mean(dim=reduce_dimensions)
+        plane_sq_means = jumps.square().mean(dim=reduce_dimensions)
         phase_means = []
         for phase in range(window_size):
             phase_indices = torch.arange(
                 phase, length - 1, window_size, device=field.device
             )
             phase_means.append(
-                float(torch.index_select(jumps, dimension, phase_indices).mean())
+                float(torch.index_select(plane_means, 0, phase_indices).mean())
             )
         phase_array = np.asarray(phase_means)
         peak_phase = int(phase_array.argmax())
@@ -76,23 +80,20 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
         indices = torch.arange(
             window_size - 1, length - 1, window_size, device=field.device
         )
-        boundary = torch.index_select(jumps, dimension, indices)
-        boundary_sum = float(boundary.sum())
-        boundary_sq_sum = float(boundary.square().sum())
-        boundary_count = boundary.numel()
-        total_sum = float(jumps.sum())
-        total_sq_sum = float(jumps.square().sum())
-        interior_sum = total_sum - boundary_sum
-        interior_sq_sum = total_sq_sum - boundary_sq_sum
-        interior_count = jumps.numel() - boundary_count
-        boundary_mean = boundary_sum / boundary_count
-        interior_mean = interior_sum / interior_count
+        boundary_mask = torch.zeros(length - 1, dtype=torch.bool, device=field.device)
+        boundary_mask[indices] = True
+        boundary_means = plane_means[boundary_mask]
+        boundary_sq_means = plane_sq_means[boundary_mask]
+        interior_means = plane_means[~boundary_mask]
+        interior_sq_means = plane_sq_means[~boundary_mask]
+        boundary_mean = float(boundary_means.mean())
+        interior_mean = float(interior_means.mean())
         axes[label] = {
             "boundary_mean_absolute_jump": boundary_mean,
             "interior_mean_absolute_jump": interior_mean,
             "boundary_to_interior_ratio": safe_ratio(boundary_mean, interior_mean),
-            "boundary_rms_jump": (boundary_sq_sum / boundary_count) ** 0.5,
-            "interior_rms_jump": (interior_sq_sum / interior_count) ** 0.5,
+            "boundary_rms_jump": float(boundary_sq_means.mean().sqrt()),
+            "interior_rms_jump": float(interior_sq_means.mean().sqrt()),
             "phase_scan": {
                 "peak_phase": peak_phase,
                 "peak_mean_absolute_jump": float(phase_array[peak_phase]),
@@ -101,14 +102,16 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
                 "mean_absolute_jump_by_phase": phase_means,
             },
         }
-        aggregate_boundary_sum += boundary_sum
-        aggregate_boundary_sq_sum += boundary_sq_sum
-        aggregate_boundary_count += boundary_count
-        aggregate_interior_sum += interior_sum
-        aggregate_interior_sq_sum += interior_sq_sum
-        aggregate_interior_count += interior_count
-    boundary_mean = aggregate_boundary_sum / aggregate_boundary_count
-    interior_mean = aggregate_interior_sum / aggregate_interior_count
+        aggregate_boundary_means.append(boundary_means)
+        aggregate_boundary_sq_means.append(boundary_sq_means)
+        aggregate_interior_means.append(interior_means)
+        aggregate_interior_sq_means.append(interior_sq_means)
+    all_boundary_means = torch.cat(aggregate_boundary_means)
+    all_boundary_sq_means = torch.cat(aggregate_boundary_sq_means)
+    all_interior_means = torch.cat(aggregate_interior_means)
+    all_interior_sq_means = torch.cat(aggregate_interior_sq_means)
+    boundary_mean = float(all_boundary_means.mean())
+    interior_mean = float(all_interior_means.mean())
     return {
         "window_size": window_size,
         "axes": axes,
@@ -116,12 +119,8 @@ def boundary_artifacts(field: torch.Tensor, window_size: int) -> dict:
             "boundary_mean_absolute_jump": boundary_mean,
             "interior_mean_absolute_jump": interior_mean,
             "boundary_to_interior_ratio": safe_ratio(boundary_mean, interior_mean),
-            "boundary_rms_jump": (
-                aggregate_boundary_sq_sum / aggregate_boundary_count
-            ) ** 0.5,
-            "interior_rms_jump": (
-                aggregate_interior_sq_sum / aggregate_interior_count
-            ) ** 0.5,
+            "boundary_rms_jump": float(all_boundary_sq_means.mean().sqrt()),
+            "interior_rms_jump": float(all_interior_sq_means.mean().sqrt()),
             "phase_invariant_seam_score": float(np.mean(phase_peak_ratios)),
         },
     }

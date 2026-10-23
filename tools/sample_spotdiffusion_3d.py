@@ -41,6 +41,7 @@ def parse_args():
     parser.add_argument("--shift-seed", type=int, default=1729)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--save-volume", action="store_true")
+    parser.add_argument("--save-step-states", action="store_true")
     return parser.parse_args()
 
 
@@ -58,6 +59,13 @@ def main():
     model.eval()
     generator = torch.Generator(device=device).manual_seed(args.seed)
     records = []
+    stats = json.loads(args.normalization_json.read_text())
+    mean = torch.tensor(stats["mean"], device=device).view(1, 3, 1, 1, 1)
+    std = torch.tensor(stats["std"], device=device).view(1, 3, 1, 1, 1)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    state_dir = args.output_dir / "states"
+    if args.save_step_states:
+        state_dir.mkdir(parents=True, exist_ok=True)
 
     def record_step(step, volume):
         record = {
@@ -67,10 +75,19 @@ def main():
             "global_shape": list(step.global_shape),
             "window_size": step.window_size,
             "shift": list(step.shift),
+            "event": step.event,
             "mean": float(volume.mean()),
             "std": float(volume.std()),
             "finite": bool(torch.isfinite(volume).all()),
         }
+        if args.save_step_states:
+            label = "start" if step.event == "stage_start" else f"step-{step.step}"
+            state_path = state_dir / f"stage-{step.stage}_{label}.npy"
+            physical_state = volume * std + mean
+            import numpy as np
+
+            np.save(state_path, physical_state.cpu().numpy())
+            record["state_path"] = str(state_path.resolve())
         records.append(record)
         print(record, flush=True)
 
@@ -93,15 +110,12 @@ def main():
         }[args.mode],
         shift_seed=args.shift_seed,
         step_callback=record_step,
+        stage_start_callback=record_step if args.save_step_states else None,
     )
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - started
-    stats = json.loads(args.normalization_json.read_text())
-    mean = torch.tensor(stats["mean"], device=device).view(1, 3, 1, 1, 1)
-    std = torch.tensor(stats["std"], device=device).view(1, 3, 1, 1, 1)
     physical = normalized * std + mean
-    args.output_dir.mkdir(parents=True, exist_ok=True)
     if args.save_volume:
         # Store only the physical field. Keeping normalized and physical copies
         # would double an already large 384^3 artifact.
@@ -129,6 +143,7 @@ def main():
         "steps": records,
         "volume_saved": args.save_volume,
         "volume_path": "physical_fields.npy" if args.save_volume else None,
+        "step_states_saved": args.save_step_states,
     }
     (args.output_dir / "generation.json").write_text(
         json.dumps(metadata, indent=2) + "\n"

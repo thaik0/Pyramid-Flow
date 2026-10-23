@@ -89,3 +89,25 @@ def test_early_shift_policy_keeps_each_stage_final_step_fixed():
     }
     assert all(shifts[-1] == (0, 0, 0) for shifts in stage_shifts.values())
     assert all(any(shift != (0, 0, 0) for shift in shifts[:-1]) for shifts in stage_shifts.values())
+
+
+def test_stage_start_callback_is_separate_from_post_step_callback():
+    model = FakeModel()
+    starts = []
+    steps = []
+    sample_global_spotdiffusion_3d(
+        model=model,
+        batch_size=1,
+        global_size=8,
+        steps=(1, 1),
+        device="cpu",
+        dtype=torch.float32,
+        generator=torch.Generator().manual_seed(3),
+        patch_batch_size=5,
+        shift_policy="fixed",
+        stage_start_callback=lambda step, volume: starts.append(step),
+        step_callback=lambda step, volume: steps.append(step),
+    )
+    assert [item.event for item in starts] == ["stage_start", "stage_start"]
+    assert [item.step for item in starts] == [-1, -1]
+    assert [item.event for item in steps] == ["post_step", "post_step"]

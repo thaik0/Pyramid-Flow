@@ -22,10 +22,11 @@ from .spotdiffusion_3d import (
 class GlobalStep3D:
     stage: int
     step: int
-    timestep: float
+    timestep: float | None
     global_shape: Spatial3D
     window_size: int
     shift: Spatial3D
+    event: str = "post_step"
 
 
 def predict_global_velocity_3d(
@@ -75,6 +76,7 @@ def sample_global_spotdiffusion_3d(
     shift_policy: str | None = None,
     shift_seed: int = 0,
     step_callback: Callable[[GlobalStep3D, torch.Tensor], None] | None = None,
+    stage_start_callback: Callable[[GlobalStep3D, torch.Tensor], None] | None = None,
 ) -> torch.Tensor:
     """Sample one global field with stage-consistent local model windows.
 
@@ -127,6 +129,19 @@ def sample_global_spotdiffusion_3d(
             volume = (1 - sigma) * volume + sigma * noise
 
         model.scheduler.set_timesteps(stage_steps, stage, device=device)
+        if stage_start_callback is not None:
+            stage_start_callback(
+                GlobalStep3D(
+                    stage=stage,
+                    step=-1,
+                    timestep=None,
+                    global_shape=tuple(volume.shape[-3:]),
+                    window_size=window_size,
+                    shift=(0, 0, 0),
+                    event="stage_start",
+                ),
+                volume,
+            )
         if shift_policy == "fixed":
             shifts = [(0, 0, 0)] * stage_steps
         else:
@@ -163,6 +178,7 @@ def sample_global_spotdiffusion_3d(
                         global_shape=tuple(volume.shape[-3:]),
                         window_size=window_size,
                         shift=shift,
+                        event="post_step",
                     ),
                     volume,
                 )
