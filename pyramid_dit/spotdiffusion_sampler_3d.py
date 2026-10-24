@@ -91,8 +91,11 @@ def sample_global_spotdiffusion_3d(
         raise ValueError("steps must contain one positive value per pyramid stage")
     if shift_policy is None:
         shift_policy = "all" if shifted_windows else "fixed"
-    if shift_policy not in {"fixed", "all", "early"}:
-        raise ValueError("shift_policy must be 'fixed', 'all', or 'early'")
+    valid_shift_policies = {"fixed", "all", "early", "first1", "first2"}
+    if shift_policy not in valid_shift_policies:
+        raise ValueError(
+            "shift_policy must be one of " + ", ".join(sorted(valid_shift_policies))
+        )
 
     final_local_size = model.dit.config.sample_size
     if final_local_size % model.stages[-1]:
@@ -150,6 +153,11 @@ def sample_global_spotdiffusion_3d(
             )
             if shift_policy == "early":
                 shifts[-1] = (0, 0, 0)
+            elif shift_policy in {"first1", "first2"}:
+                shifted_step_count = int(shift_policy[-1])
+                shifts[shifted_step_count:] = [
+                    (0, 0, 0)
+                ] * max(stage_steps - shifted_step_count, 0)
         for step_index, (timestep, shift) in enumerate(
             zip(model.scheduler.timesteps, shifts)
         ):

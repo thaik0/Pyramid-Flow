@@ -6,6 +6,7 @@ from pyramid_dit.spotdiffusion_sampler_3d import (
     predict_global_velocity_3d,
     sample_global_spotdiffusion_3d,
 )
+from pyramid_dit.spotdiffusion_3d import sample_shift_schedule
 
 
 class FakeScheduler:
@@ -111,3 +112,28 @@ def test_stage_start_callback_is_separate_from_post_step_callback():
     assert [item.event for item in starts] == ["stage_start", "stage_start"]
     assert [item.step for item in starts] == [-1, -1]
     assert [item.event for item in steps] == ["post_step", "post_step"]
+
+
+def test_first_n_shift_policies_shift_only_requested_steps():
+    for policy, expected_shifted_steps in (("first1", 1), ("first2", 2)):
+        model = FakeModel()
+        observed = []
+        sample_global_spotdiffusion_3d(
+            model=model,
+            batch_size=1,
+            global_size=8,
+            steps=(4, 4),
+            device="cpu",
+            dtype=torch.float32,
+            generator=torch.Generator().manual_seed(3),
+            patch_batch_size=5,
+            shift_policy=policy,
+            shift_seed=19,
+            step_callback=lambda step, volume: observed.append(step),
+        )
+        for stage in range(2):
+            shifts = [item.shift for item in observed if item.stage == stage]
+            window_size = 2 * model.stages[stage]
+            expected = sample_shift_schedule(4, window_size, 19 + stage)
+            assert shifts[:expected_shifted_steps] == expected[:expected_shifted_steps]
+            assert all(shift == (0, 0, 0) for shift in shifts[expected_shifted_steps:])

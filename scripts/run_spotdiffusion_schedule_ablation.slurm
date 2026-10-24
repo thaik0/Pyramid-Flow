@@ -33,7 +33,7 @@ srun "$PYTHON_BIN" tools/export_fluid_reference.py \
   --dataset-index "$REFERENCE_INDEX" \
   --output-dir "$OUTPUT_DIR/reference"
 
-for MODE in fixed shifted shifted-early; do
+for MODE in fixed shifted shifted-early shifted-first1 shifted-first2; do
   srun "$PYTHON_BIN" tools/sample_spotdiffusion_3d.py \
     --checkpoint "$CHECKPOINT" \
     --output-dir "$OUTPUT_DIR/$MODE" \
@@ -52,10 +52,14 @@ srun "$PYTHON_BIN" tools/evaluate_spotdiffusion_schedule_ablation.py \
   --fixed-field "$OUTPUT_DIR/fixed/physical_fields.npy" \
   --shifted-field "$OUTPUT_DIR/shifted/physical_fields.npy" \
   --shifted-early-field "$OUTPUT_DIR/shifted-early/physical_fields.npy" \
+  --shifted-first1-field "$OUTPUT_DIR/shifted-first1/physical_fields.npy" \
+  --shifted-first2-field "$OUTPUT_DIR/shifted-first2/physical_fields.npy" \
   --reference-field "$OUTPUT_DIR/reference/physical_fields.npy" \
   --fixed-metadata "$OUTPUT_DIR/fixed/generation.json" \
   --shifted-metadata "$OUTPUT_DIR/shifted/generation.json" \
   --shifted-early-metadata "$OUTPUT_DIR/shifted-early/generation.json" \
+  --shifted-first1-metadata "$OUTPUT_DIR/shifted-first1/generation.json" \
+  --shifted-first2-metadata "$OUTPUT_DIR/shifted-first2/generation.json" \
   --reference-metadata "$OUTPUT_DIR/reference/reference.json" \
   --output-dir "$OUTPUT_DIR/evaluation" \
   --window-size 64 \

@@ -34,7 +34,13 @@ def parse_args():
     parser.add_argument("--patch-batch-size", type=int, default=1)
     parser.add_argument(
         "--mode",
-        choices=("fixed", "shifted", "shifted-early"),
+        choices=(
+            "fixed",
+            "shifted",
+            "shifted-early",
+            "shifted-first1",
+            "shifted-first2",
+        ),
         default="shifted",
     )
     parser.add_argument("--seed", type=int, default=4242)
@@ -107,6 +113,8 @@ def main():
             "fixed": "fixed",
             "shifted": "all",
             "shifted-early": "early",
+            "shifted-first1": "first1",
+            "shifted-first2": "first2",
         }[args.mode],
         shift_seed=args.shift_seed,
         step_callback=record_step,

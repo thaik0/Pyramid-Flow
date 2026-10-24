@@ -13,7 +13,14 @@ import torch
 from evaluate_spotdiffusion_ablation import evaluate_field
 
 
-MODES = ("fixed", "shifted", "shifted_early", "reference")
+MODES = (
+    "fixed",
+    "shifted",
+    "shifted_early",
+    "shifted_first1",
+    "shifted_first2",
+    "reference",
+)
 GENERATED_MODES = MODES[:-1]
 
 
@@ -72,7 +79,9 @@ def write_visuals(slices: dict[str, np.ndarray], spectra: dict[str, np.ndarray],
         return "central_slices.npz (matplotlib unavailable; PNGs not created)"
 
     labels = ("speed", "u", "v", "w")
-    figure, axes = plt.subplots(4, 4, figsize=(16, 15), constrained_layout=True)
+    figure, axes = plt.subplots(
+        len(MODES), 4, figsize=(16, 3.7 * len(MODES)), constrained_layout=True
+    )
     for column, label in enumerate(labels):
         combined = np.concatenate([slices[mode][column].ravel() for mode in MODES])
         low, high = np.percentile(combined, (1, 99))
@@ -128,10 +137,7 @@ def main():
     spacing = tuple(args.spacing)
 
     field_paths = {
-        "fixed": args.fixed_field,
-        "shifted": args.shifted_field,
-        "shifted_early": args.shifted_early_field,
-        "reference": args.reference_field,
+        mode: getattr(args, f"{mode}_field") for mode in MODES
     }
     metrics = {}
     spectra = {}
@@ -146,6 +152,8 @@ def main():
         "fixed": json.loads(args.fixed_metadata.read_text()),
         "shifted": json.loads(args.shifted_metadata.read_text()),
         "shifted_early": json.loads(args.shifted_early_metadata.read_text()),
+        "shifted_first1": json.loads(args.shifted_first1_metadata.read_text()),
+        "shifted_first2": json.loads(args.shifted_first2_metadata.read_text()),
     }
     controlled_keys = (
         "checkpoint_sha256",
@@ -162,6 +170,8 @@ def main():
         "fixed": "fixed",
         "shifted": "shifted",
         "shifted_early": "shifted-early",
+        "shifted_first1": "shifted-first1",
+        "shifted_first2": "shifted-first2",
     }
     if not all(controls_match.values()):
         raise ValueError(f"schedule controls do not match: {controls_match}")
