@@ -166,3 +166,50 @@ seams at no measured runtime or memory penalty, but the claim that it did so
 without hurting the generated field is not supported by this single sample.
 Matched visual inspection, comparison against real-field reference metrics,
 and multiple paired seeds are still required before a scientific conclusion.
+
+## Schedule and stepwise diagnostics
+
+A follow-up single-seed experiment compared fixed windows, shifts at every
+step, and shifts at early steps with the nominal final step fixed. It also
+included one provisional full-resolution simulation reference (dataset index
+0, `fluid_25.nc`, timestep 0), selected outside the checkpoint's training
+indices 200--327. This is not a final held-out benchmark because a
+trajectory-aware split has not yet been approved.
+
+Relative to that reference, the fixed result had 63.1 percent lower kinetic
+energy and a mean absolute component-standard-deviation error of 39.7 percent.
+The fully shifted result had 76.6 percent lower kinetic energy and a 51.9
+percent component-standard-deviation error. Periodic divergence was much
+higher than the reference for every generated arm, and fluctuation-spectrum
+relative L1 errors were 1.209 for fixed and 1.122 for shifted. These large
+reference gaps confirm that the 600-step checkpoint remains an engineering
+smoke baseline rather than a scientifically faithful generator.
+
+The shifted-early arm was numerically almost identical to shifting at every
+step: its seam-score change was -29.23 percent in both cases, and its energy,
+divergence, component variance, and spectrum metrics agreed to the displayed
+precision. The nominal final scheduler update is extremely small, which is
+also visible in the nearly unchanged state between steps 3 and 4. Making only
+that step fixed therefore does not test a substantively different schedule.
+
+The stepwise seam trajectory localizes the artifact source:
+
+- stage-start seam scores were low (`1.003`, `1.014`, and `1.130` for fixed;
+  `1.003`, `1.012`, and `1.091` for shifted), so resolution transitions did
+  not introduce the dominant final grid artifact;
+- fixed-boundary updates progressively increased the score, most strongly at
+  `384^3`: `1.130` at stage start, then `1.214`, `1.351`, and `1.542` after
+  the substantive updates;
+- shifted updates kept the final-stage score near `1.09`; and
+- the last recorded update changed both arms negligibly, consistent with its
+  very small remaining scheduler interval.
+
+The remaining seam artifact therefore comes primarily from repeated local
+model updates on a fixed grid, not from the pyramid resolution transition.
+Shifting suppresses that accumulation, but it also changes the energy added or
+retained by the same local updates. The next schedule test must alter an
+earlier substantive update (for example, shifting only the first one or two
+updates per stage), rather than only the nominal final step. Before optimizing
+that schedule scientifically, the project needs an approved trajectory split,
+correct physical grid spacing and boundary assumptions, multiple reference
+fields, and a substantially trained baseline checkpoint.
