@@ -213,3 +213,34 @@ updates per stage), rather than only the nominal final step. Before optimizing
 that schedule scientifically, the project needs an approved trajectory split,
 correct physical grid spacing and boundary assumptions, multiple reference
 fields, and a substantially trained baseline checkpoint.
+
+## Partial-shift schedule test
+
+The next matched run shifted only the first one or first two substantive
+updates of each stage. It reused the same checkpoint, initial and transition
+noise, sampling seed, four-step schedule, patch batching, and provisional
+simulation reference.
+
+| Schedule | Seam score | Seam change vs. fixed | Kinetic-energy error vs. reference | Mean component-std error | Spectrum relative L1 |
+|---|---:|---:|---:|---:|---:|
+| Fixed | 1.5422 | 0.00% | -63.15% | 39.68% | 1.2090 |
+| Shift first update | 1.3027 | -15.53% | -71.66% | 47.07% | 1.1482 |
+| Shift first two updates | 1.1400 | -26.08% | -75.66% | 50.94% | 1.1265 |
+| Shift every update | 1.0914 | -29.23% | -76.61% | 51.91% | 1.1216 |
+
+This is a monotonic tradeoff for seams, energy, and component variance: more
+shifted substantive updates produce fewer grid artifacts but move kinetic
+energy and velocity variance farther below the provisional reference. The
+fluctuation spectrum and divergence metrics move in the opposite direction
+and become somewhat closer to the reference, although divergence remains
+orders of magnitude too high for every generated arm. Runtime (10--11.5
+seconds) and peak allocated GPU memory (6.81 GB) are effectively unchanged.
+
+Shifting only the first update is the least aggressive compromise observed so
+far, providing a 15.5 percent seam reduction with less statistical change than
+the first-two or fully shifted schedules. It is not established as the best
+physical result: all arms remain far from the single provisional reference,
+and the different fidelity metrics do not agree on one winner. Because the
+largest seam growth occurs at the final `384^3` stage, a more targeted next
+screen would shift one or two substantive updates only at that stage, avoiding
+unnecessary perturbations at the lower-resolution stages.
