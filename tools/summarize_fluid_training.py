@@ -1,7 +1,5 @@
 """Summarize stage-wise learning and throughput from a fluid training log."""
 
-from __future__ import annotations
-
 import argparse
 import json
 from collections import defaultdict
