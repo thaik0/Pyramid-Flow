@@ -58,6 +58,7 @@ def parse_args():
     parser.add_argument("--stage-mode", choices=("sample", "cycle"), default="sample")
     parser.add_argument("--checkpoint-every", type=int, default=0)
     parser.add_argument("--cache-dataset", action="store_true")
+    parser.add_argument("--resume", type=Path)
     return parser.parse_args()
 
 
@@ -107,11 +108,35 @@ def main():
         num_attention_heads=args.model_heads,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=1e-4)
+    start_step = 0
+    if args.resume is not None:
+        checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
+        checkpoint_config = checkpoint["config"]
+        for name in ("crop_size", "patch_size", "model_layers", "model_heads"):
+            if checkpoint_config[name] != getattr(args, name):
+                raise ValueError(
+                    f"resume mismatch for {name}: checkpoint={checkpoint_config[name]}, "
+                    f"requested={getattr(args, name)}"
+                )
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        start_step = int(checkpoint["steps"])
+        if start_step >= args.steps:
+            raise ValueError(
+                f"checkpoint is already at step {start_step}; --steps must be larger"
+            )
+        if "torch_rng_state" in checkpoint:
+            torch.set_rng_state(checkpoint["torch_rng_state"])
+        if "cuda_rng_state_all" in checkpoint and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(checkpoint["cuda_rng_state_all"])
+        if "loader_rng_state" in checkpoint:
+            loader_generator.set_state(checkpoint["loader_rng_state"])
 
     saved_config = vars(args).copy()
     saved_config["data_root"] = str(args.data_root.resolve())
     saved_config["output_dir"] = str(args.output_dir.resolve())
     saved_config["normalization_json"] = str(args.normalization_json.resolve()) if args.normalization_json else None
+    saved_config["resume"] = str(args.resume.resolve()) if args.resume else None
     saved_config["dataset_cache_seconds"] = cache_seconds
     (args.output_dir / "config.json").write_text(json.dumps(saved_config, indent=2) + "\n")
     manifest = []
@@ -131,7 +156,7 @@ def main():
     iterator = iter(loader)
     log_path = args.output_dir / "metrics.jsonl"
     run_start = time.perf_counter()
-    for step in range(args.steps):
+    for step in range(start_step, args.steps):
         try:
             batch = next(iterator)
         except StopIteration:
@@ -164,7 +189,10 @@ def main():
         if args.checkpoint_every and (step + 1) % args.checkpoint_every == 0:
             torch.save(
                 {"model": model.state_dict(), "optimizer": optimizer.state_dict(),
-                 "steps": step + 1, "seed": args.seed, "config": saved_config},
+                 "steps": step + 1, "seed": args.seed, "config": saved_config,
+                 "torch_rng_state": torch.get_rng_state(),
+                 "cuda_rng_state_all": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+                 "loader_rng_state": loader_generator.get_state()},
                 args.output_dir / f"checkpoint-{step + 1}.pt",
             )
 
@@ -173,6 +201,7 @@ def main():
             "model": model.state_dict(), "optimizer": optimizer.state_dict(),
             "steps": args.steps, "seed": args.seed,
             "torch_rng_state": torch.get_rng_state(),
+            "cuda_rng_state_all": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
             "loader_rng_state": loader_generator.get_state(),
             "config": saved_config,
             "elapsed_seconds": time.perf_counter() - run_start,
