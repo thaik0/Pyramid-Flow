@@ -143,12 +143,12 @@ def main():
         print(f"[{len(rows)}/{len(indices)}] {item['filename']} t={item['timestep']}")
 
     summary = {
-        "status": "provisional_single_trajectory_contiguous_holdout",
+        "status": "provisional_single_trajectory_heldout_index_block",
         "periodic_boundaries": True,
         "assumed_single_trajectory": True,
         "reference_index_range": [indices[0], indices[-1]],
         "training_index_range": [args.training_index_start, args.training_index_end],
-        "temporal_buffer_in_dataset_samples": distance,
+        "index_buffer_from_training": distance,
         "sample_count": len(rows),
         "spacing": list(args.spacing),
         "spacing_status": "physical" if tuple(args.spacing) != (1.0, 1.0, 1.0) else "index_units_only",
@@ -156,8 +156,9 @@ def main():
         "metrics": summarize(rows),
         "manifest": manifest,
         "caveat": (
-            "Confirm the file/time ordering and physical grid spacing with the dataset owner. "
-            "If spacing remains 1, divergence is in index units and only like-for-like comparisons are valid."
+            "Dataset-index adjacency does not guarantee temporal continuity when numbered "
+            "files are missing. Inspect the stored time coordinates. If spacing remains 1, "
+            "divergence is in index units and only like-for-like comparisons are valid."
         ),
     }
     (args.output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

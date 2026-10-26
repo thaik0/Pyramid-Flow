@@ -1,0 +1,17 @@
+{
+  "status": "exact_full_volume_training_statistics",
+  "channels": ["u", "v", "w"],
+  "mean": [
+    3.894397160905639e-08,
+    -1.532266092073253e-08,
+    2.085516094892056e-08
+  ],
+  "std": [
+    1.2662126228653219,
+    1.3661668311577515,
+    1.3332912995591046
+  ],
+  "training_index_range": [200, 327],
+  "sample_count": 128,
+  "voxel_count_per_channel": 7247757312
+}

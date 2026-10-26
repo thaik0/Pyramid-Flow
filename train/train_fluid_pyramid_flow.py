@@ -9,11 +9,31 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Dataset, Subset
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from dataset.fluid_volume_dataset import FluidVolumeDataset  # noqa: E402
 from pyramid_dit.fluid_pyramid_flow import FluidPyramidFlow  # noqa: E402
+
+
+class CachedDataset(Dataset):
+    """Materialize a bounded crop dataset once to avoid repeated NetCDF reads."""
+
+    def __init__(self, source):
+        started = time.perf_counter()
+        self.items = []
+        for index in range(len(source)):
+            item = dict(source[index])
+            item["volume"] = item["volume"].clone()
+            self.items.append(item)
+            print(f"Cached training crop {index + 1}/{len(source)}")
+        self.elapsed_seconds = time.perf_counter() - started
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, index):
+        return self.items[index]
 
 
 def parse_args():
@@ -37,6 +57,7 @@ def parse_args():
     parser.add_argument("--index-count", type=int)
     parser.add_argument("--stage-mode", choices=("sample", "cycle"), default="sample")
     parser.add_argument("--checkpoint-every", type=int, default=0)
+    parser.add_argument("--cache-dataset", action="store_true")
     return parser.parse_args()
 
 
@@ -70,6 +91,10 @@ def main():
         dataset = Subset(base_dataset, fixed_indices)
     else:
         dataset = base_dataset
+    cache_seconds = 0.0
+    if args.cache_dataset:
+        dataset = CachedDataset(dataset)
+        cache_seconds = dataset.elapsed_seconds
     loader_generator = torch.Generator().manual_seed(args.seed)
     loader = DataLoader(
         dataset, batch_size=args.batch_size, shuffle=True,
@@ -87,6 +112,7 @@ def main():
     saved_config["data_root"] = str(args.data_root.resolve())
     saved_config["output_dir"] = str(args.output_dir.resolve())
     saved_config["normalization_json"] = str(args.normalization_json.resolve()) if args.normalization_json else None
+    saved_config["dataset_cache_seconds"] = cache_seconds
     (args.output_dir / "config.json").write_text(json.dumps(saved_config, indent=2) + "\n")
     manifest = []
     manifest_indices = fixed_indices or list(range(len(base_dataset)))
